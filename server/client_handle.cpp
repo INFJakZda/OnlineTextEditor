@@ -1,6 +1,6 @@
 #include "main.hpp"
 
-void manage_client(int nClientDesc)
+bool manage_client(int nClientDesc, int code_msg)
 {
     struct msgbuf
     {
@@ -17,11 +17,7 @@ void manage_client(int nClientDesc)
     int posX;
     int posY;
 
-    int code_msg = 0;
-
-    //cout << "#DEBUG: manage_client start, client id = " << nClientDesc << endl;
-    if(read(nClientDesc, &code_msg, sizeof(code_msg)) < 0) return;
-    //cout << "#DEBUG: manage_client get code - " << code_msg << endl;
+    usleep(1000 * 1); //1 sec
 
     if(code_msg == 111)
     {
@@ -32,7 +28,6 @@ void manage_client(int nClientDesc)
             {
                 if(CST[i].allupdate == false)
                 {
-                    //cout << "#DEBUG:"<< nClientDesc << " allupdate status " << CST[i].allupdate  << endl;
                     temp = 99;
                     i = 100;
                 }
@@ -46,10 +41,10 @@ void manage_client(int nClientDesc)
         if(temp == 99)
         {
             write(nClientDesc, &temp, sizeof(temp));
-
             for(int i = 0; i < PAGE_X; i++)
                 for(int j = 0; j < PAGE_Y; j++)
-                    write(nClientDesc, &plik->buffor[i][j], sizeof(plik->buffor[i][j]));
+                    if(write(nClientDesc, &plik->buffor[i][j], sizeof(plik->buffor[i][j])) < 0)
+                        return false;
 
             for(int i = 0; i < CLIENT_LIMIT; i++)
                 if(CST[i].descriptor == nClientDesc)
@@ -59,29 +54,26 @@ void manage_client(int nClientDesc)
                 }
         }
         else
-            write(nClientDesc, &temp, sizeof(temp));
+            if(write(nClientDesc, &temp, sizeof(temp)) < 0) return false;
     }
     else if(code_msg == 222)
     {
-        read(nClientDesc, &chr, sizeof(chr));
-        //cout << "#DEBUG: client_handle chr - " << chr << endl;
+        if(read(nClientDesc, &chr, sizeof(chr)) < 0) return false;
         fifo.ch = chr;
-        read(nClientDesc, &posX, sizeof(posX));
-        //cout << "#DEBUG: client_handle posX - " << posX << endl;
+        if(read(nClientDesc, &posX, sizeof(posX)) < 0) return false;
         fifo.posX = posX;
-        read(nClientDesc, &posY, sizeof(posY));
-        //cout << "#DEBUG: client_handle posY - " << posY << endl;
+        if(read(nClientDesc, &posY, sizeof(posY)) < 0) return false;
         fifo.posY = posY;
         fifo.type = 10;
 
-        if(!(posX >= 0) && (posX < PAGE_X)) return;
-        if(!(posY >= 0) && (posY < PAGE_Y)) return;
+        if(!(posX >= 0) && (posX < PAGE_X)) return false;
+        if(!(posY >= 0) && (posY < PAGE_Y)) return false;
 
         status = msgsnd(id, &fifo, sizeof(fifo) - sizeof(long), 0);
         if(status != 0)
         {
             cout << "#DEBUG: MSGSND ERROR!!!" << endl;
-            return;
+            return false;
         }
 
         for(int i = 0; i < CLIENT_LIMIT; i++)
@@ -91,7 +83,7 @@ void manage_client(int nClientDesc)
     else if(code_msg == 333)
     {
         int temp = numberClientsDescriptors - 1;
-        write(nClientDesc, &temp, sizeof(temp));
+        if(write(nClientDesc, &temp, sizeof(temp))  < 0) return false;
     }
     else if(code_msg == 444)
     {
@@ -109,19 +101,30 @@ void manage_client(int nClientDesc)
         tempSCD = numberClientsDescriptors - 1;
         if((tempSCD != 0) && (tempSCD < CLIENT_LIMIT))
         {
-            write(nClientDesc, &tempSCD, sizeof(tempSCD));
+            if(write(nClientDesc, &tempSCD, sizeof(tempSCD)) < 0) return false;
             for(int i = 0; i < CLIENT_LIMIT; i++)
-                if(CST[i].descriptor != -1)
+                if((CST[i].descriptor != -1) && (CST[i].descriptor != nClientDesc))
                 {
-                    write(nClientDesc, &CST[i].selectStart, sizeof(CST[i].selectStart));
-                    write(nClientDesc, &CST[i].selectEnd, sizeof(CST[i].selectEnd));
+                    if(write(nClientDesc, &CST[i].selectStart, sizeof(CST[i].selectStart)) < 0) return false;
+                    if(write(nClientDesc, &CST[i].selectEnd, sizeof(CST[i].selectEnd)) < 0) return false;
                 }
         }
         else
         {
           tempSCD = 0;
-          write(nClientDesc, &tempSCD, sizeof(tempSCD));
+          if(write(nClientDesc, &tempSCD, sizeof(tempSCD)) < 0) return false;
         }
     }
-    else cout << "#DEBUG: DFQ!!!!" << endl;
+    else if(code_msg == 666)
+    {
+        cout << "#DEBUG: Close client due he finished work > " << nClientDesc << endl;
+        return false;
+    }
+    else
+    {
+        cout << "#DEBUG: DFQ!!!!" << endl;
+        cout << "#DEBUG: Close client due security reason > " << nClientDesc << endl;
+        return false;
+    }
+    return true;
 }

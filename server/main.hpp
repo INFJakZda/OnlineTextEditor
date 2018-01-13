@@ -31,8 +31,8 @@
 #define QUEUE_SIZE 10
 #define PORT 6666
 
-#define PAGE_X 45
-#define PAGE_Y 26
+#define PAGE_X 26
+#define PAGE_Y 45
 #define CLIENT_LIMIT 7
 
 using namespace std;
@@ -45,9 +45,10 @@ extern int id;
 extern struct Plik *plik;
 extern int numberClientsDescriptors;
 extern struct ClientSelectText CST[CLIENT_LIMIT];
+extern bool numberClientsDescriptorsChang;
 
 /* FUNCTIONS */
-void manage_client(int nClientDesc);
+bool manage_client(int nClientDesc, int code_msg);
 void feditor();
 
 /* STRUCT */
@@ -61,6 +62,7 @@ struct ClientSelectText
     int descriptor;
     int selectStart;
     int selectEnd;
+    int timeoutcount;
     bool allupdate;
 };
 

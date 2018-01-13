@@ -18,11 +18,10 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <signal.h>
+#include <thread>
 
-#define PORT 6666
-
-#define PAGE_X 45
-#define PAGE_Y 26
+#define PAGE_X 26
+#define PAGE_Y 45
 
 using namespace std;
 

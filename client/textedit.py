@@ -2,7 +2,7 @@ import sys
 from PyQt4 import QtGui, QtCore
 import re
 import os
-
+import subprocess
 
 class Window(QtGui.QMainWindow):
     def __init__(self):
@@ -10,8 +10,8 @@ class Window(QtGui.QMainWindow):
         self.setGeometry(150, 150, 700, 600)
         self.setWindowTitle("TextEdit")
         self.fixSizeString = False
-
-        self.colorsUsers = ["#ff0000","ffd700","ff7200","b89300","#07f000","006d00","00fecc","0061cc","9c61cc", "ff43d4"]
+        # self.colorsUsers change !!!
+        self.colorsUsers = [QtGui.QColor(255, 0, 0), QtGui.QColor(255, 0, 150), QtGui.QColor(135, 0, 255), QtGui.QColor(0, 0, 255), QtGui.QColor(0, 150, 255), QtGui.QColor(0, 255, 100), QtGui.QColor(0, 255, 0), QtGui.QColor(130, 255, 0), QtGui.QColor(255, 255, 0), QtGui.QColor(255, 100, 0)]
         self.text = ''
         self.watcher = ''
 
@@ -20,12 +20,14 @@ class Window(QtGui.QMainWindow):
     def __home__(self):
         self.textFieldEdit = QtGui.QTextEdit(self)
         self.textFieldEdit.resize(400,500)
-        self.textFieldEdit.move(40,20)
+        self.textFieldEdit.move(20,20)
+        self.textFieldEdit.setStyleSheet("color: black; background-color: #FFFFFF")
 
         self.textFieldEditTwo = QtGui.QTextEdit(self)
         self.textFieldEditTwo.resize(200,300)
-        self.textFieldEditTwo.move(480,30)
+        self.textFieldEditTwo.move(430,30)
         self.textFieldEditTwo.setReadOnly(True)
+        self.textFieldEditTwo.setStyleSheet("color: black; background-color: #FFFFFF")
 
         self.textFieldEditTwo.append('Active users:')
 
@@ -58,14 +60,14 @@ class Window(QtGui.QMainWindow):
 
         if (userNum != 0) and (userNum < 10):
             self.textFieldEditTwo.clear()
-            self.textFieldEditTwo.setTextColor(QtGui.QColor("#000000"))
+            self.textFieldEditTwo.setTextColor(QtGui.QColor(0, 0, 0))
             self.textFieldEditTwo.append('Active users:')
             for i in range(userNum):
-                self.textFieldEditTwo.setTextColor(QtGui.QColor(self.colorsUsers[i]))
+                self.textFieldEditTwo.setTextColor(self.colorsUsers[i])
                 self.textFieldEditTwo.append('User_%d' % (i))
         else:
             self.textFieldEditTwo.clear()
-            self.textFieldEditTwo.setTextColor(QtGui.QColor("#000000"))
+            self.textFieldEditTwo.setTextColor(QtGui.QColor(0, 0, 0))
             self.textFieldEditTwo.append('Active users:')
             self.textFieldEditTwo.append('0')
 
@@ -79,27 +81,38 @@ class Window(QtGui.QMainWindow):
         text = f.read()
         f.close()
 
+        text = text.split()
         try:
             userNum = int(text[0])
         except:
             userNum = 0
         if(userNum != 0):
-            try:
-                temp_count = 1
-                for i in range(1, userNum):
-                    cst = int(text[temp_count])
-                    temp_count += 1
-                    ced = int(text[i])
-                    temp_count += 1
-                    if cst != ced:
-                        cursor_new.setPosition(cst)
-                        cursor_new.setPosition(ced, QtGui.QTextCursor.KeepAnchor)
-                        format.setBackground(QtGui.QBrush(QtGui.QColor(self.colorsUsers[userNum])))
-                        cursor_new.mergeCharFormat(format)
-                        self.textFieldEdit.setTextCursor(cursor_new)
-            except:
-                pass
+            temp_count = 1
+            cursor_new.setPosition(0)
+            cursor_new.setPosition(len(self.textFieldEdit.toPlainText()), QtGui.QTextCursor.KeepAnchor)
+            format.setBackground(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+            cursor_new.mergeCharFormat(format)
+            self.textFieldEdit.setTextCursor(cursor_new)
+            for i in range(userNum):
+                cst = int(text[temp_count])
+                temp_count += 1
+                ced = int(text[temp_count])
+                temp_count += 1
+                if cst != ced:
+                    cursor_new.setPosition(cst)
+                    cursor_new.setPosition(ced, QtGui.QTextCursor.KeepAnchor)
+                    format.setBackground(QtGui.QBrush(self.colorsUsers[i]))
+                    cursor_new.mergeCharFormat(format)
+                    self.textFieldEdit.setTextCursor(cursor_new)
+                else:
+                    cursor_new.setPosition(cst)
+                    cursor_new.setPosition(ced, QtGui.QTextCursor.KeepAnchor)
+                    format.setBackground(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+                    cursor_new.mergeCharFormat(format)
+                    self.textFieldEdit.setTextCursor(cursor_new)
 
+        format.setBackground(QtGui.QBrush(QtGui.QColor(255, 255, 255)))
+        cursor_old.mergeCharFormat(format)
         self.textFieldEdit.setTextCursor(cursor_old)
         self.textFieldEdit.textChanged.connect(self.__text_field_edit_event_func__)
 
@@ -164,18 +177,22 @@ class Window(QtGui.QMainWindow):
             copyCursor.setPosition(0)
             self.textFieldEdit.setTextCursor(copyCursor)
         self.textFieldEdit.textChanged.connect(self.__text_field_edit_event_func__)
-        self.watcher.fileChanged.connect(self.__file_changed_edit_file__)
         with open("temp/out.txt", "w+") as f:
             f.write(self.text)
+        self.watcher.fileChanged.connect(self.__file_changed_edit_file__)
 
     def __file_changed_edit_file__(self):
         self.textFieldEdit.textChanged.disconnect()
         f = open("temp/out.txt", "r")
         self.text = f.read()
         f.close()
+        self.text = self.text.split('\n')
         copyCursor = self.textFieldEdit.textCursor()
         cursorPosition = self.textFieldEdit.textCursor().position()
-        self.textFieldEdit.setPlainText(self.text)
+        self.textFieldEdit.clear()
+        for i in range(len(self.text)):
+            self.textFieldEdit.append(self.text[i])
+            i = i * 2
 
         try:
             copyCursor.setPosition(cursorPosition)
@@ -197,21 +214,27 @@ class Window(QtGui.QMainWindow):
         os.rmdir("temp")
         super(Window, self).closeEvent(event)
 
+def make_temp_folders():
+    f = open("temp/out.txt", "w")
+    f.close()
+    f = open("temp/selecpos.txt", "w")
+    f.write("0\n0")
+    f.close()
+    f = open("temp/selecposother.txt", "w")
+    f.write("0\n0\n0")  # How many users select text, start & end select
+    f.close()
+    f = open("temp/activusr.txt", "w")
+    f.write("0")
+    f.close()
 
 if __name__ == '__main__':
     if not os.path.exists("temp/out.txt"):
         os.makedirs("temp")
-        f = open("temp/out.txt", "w")
-        f.close()
-        f = open("temp/selecpos.txt", "w")
-        f.write("0\n0")
-        f.close()
-        f = open("temp/selecposother.txt", "w")
-        f.write("0\n0\n0")  # How many users select text, start & end select
-        f.close()
-        f = open("temp/activusr.txt", "w")
-        f.write("0")
-        f.close()
+        make_temp_folders()
+    else:
+        make_temp_folders()
+        
+    subprocess.Popen(["./client"])
     app = QtGui.QApplication(sys.argv)
     GUI = Window()
     sys.exit(app.exec_())
