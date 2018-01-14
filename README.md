@@ -1,4 +1,4 @@
-# network_lab_project
+# Online Text editor
 Editor for collaboration. 
 
 Task requirement:

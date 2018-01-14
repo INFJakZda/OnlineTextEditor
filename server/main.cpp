@@ -6,7 +6,7 @@ int nSocketDesc;
 
 condition_variable cv;
 mutex cv_m;
-bool ready = false;
+bool READY_THREAD_GLOBAL_SYNC = false;
 
 vector < int > clientsDescriptors;
 int numberClientsDescriptors = 0;
@@ -19,18 +19,19 @@ void signal_callback_handler(int signum)
 {
   cout << "#DEBUG: Signum = " << signum <<endl;
   end_program = true;
+  READY_THREAD_GLOBAL_SYNC = true;
   cout << "#DEBUG: Start shutdown server" << endl;
 }
 
 void signal_callback_handler_PIPE(int signum)
 {
     cout << "#ERROR: caught signal SIGPIPE " << signum << "!!!!!!" << endl;
-    for(unsigned int i = 0; i < clientsDescriptors.size(); i++)
+    /*for(unsigned int i = 0; i < clientsDescriptors.size(); i++)
     {
         cout << "#DEBUG-schPIPE: Close descriptor - " << waitfor[i].fd << endl;
         close(waitfor[i].fd);
         waitfor[i].fd = -1;
-    }
+    }*/
 }
 
 
@@ -64,6 +65,11 @@ void control_client()
 
     while(!end_program)
     {
+        unique_lock<std::mutex> lk(cv_m);
+        //cerr << "#DEBUG: control_client WAITING... \n";
+        cv.wait(lk, []{return READY_THREAD_GLOBAL_SYNC;});
+        //cerr << "#DEBUG: control_client FINISHED WAITING.\n";
+
         if(numberClientsDescriptors == 0) continue;
 
         if(numberClientsDescriptorsChang == true)
@@ -167,6 +173,8 @@ void control_client()
         for(int i = 0; i < numberClientsDescriptors; i++) close(waitfor[i].fd);
         delete waitfor;
     }
+    
+    cout << "#DEBUG: control_client closed" << endl;
 }
 
 int server()
@@ -225,43 +233,44 @@ int server()
             close(nClientDesc);
         else
         {
-            int coutnCLIENT = 0;
+            READY_THREAD_GLOBAL_SYNC = false;
+            this_thread::sleep_for(std::chrono::seconds(1));
+            lock_guard<std::mutex> lk(cv_m);
+            cerr << "#DEBUG: server manage new connection\n";
+
+            int countCLIENT = 0;
             for(int i = 0; i < CLIENT_LIMIT; i++)
             {
                 cout << "#DEBUG: This client desc is saved: " << CST[i].descriptor << endl;
-                if(CST[i].descriptor == -1) ++coutnCLIENT;
+                if(CST[i].descriptor == -1) ++countCLIENT;
                 else
                 {
                     cout <<"#DEBUG: Test connection to descriptor " << endl;
-                    if(CST[i].descriptor == -1) ++coutnCLIENT;
+                    char c;
+                    ssize_t x = recv(CST[i].descriptor, &c, 1, MSG_PEEK);
+                    if (x > 0)
+                    {
+                        /* ...have data, leave it in socket buffer */
+                        cout << "#DEBUG: This client exist: " << CST[i].descriptor << endl;
+                    }
+                    else if (x == 0)
+                    {
+                        /* ...handle FIN from client */
+                        close(CST[i].descriptor);
+                        CST[i].descriptor = -1;
+                        ++countCLIENT;
+                    }
                     else
                     {
-                        char c;
-                        ssize_t x = recv(CST[i].descriptor, &c, 1, MSG_PEEK);
-                        if (x > 0)
-                        {
-                            /* ...have data, leave it in socket buffer until B connects */
-                            cout << "#DEBUG: This client exist: " << CST[i].descriptor << endl;
-                        }
-                        else if (x == 0)
-                        {
-                            /* ...handle FIN from A */
-                            close(CST[i].descriptor);
-                            CST[i].descriptor = -1;
-                            ++coutnCLIENT;
-                        }
-                        else
-                        {
-                             /* ...handle errors */
-                            close(CST[i].descriptor);
-                            CST[i].descriptor = -1;
-                            ++coutnCLIENT;
-                        }
+                         /* ...handle errors */
+                        close(CST[i].descriptor);
+                        CST[i].descriptor = -1;
+                        ++countCLIENT;
                     }
                 }
             }
 
-            if(coutnCLIENT == CLIENT_LIMIT)
+            if(countCLIENT == CLIENT_LIMIT)
             {
                 clientsDescriptors.clear();
                 numberClientsDescriptorsChang = true;
@@ -282,11 +291,15 @@ int server()
             clientsDescriptors.push_back(nClientDesc);
             numberClientsDescriptorsChang = true;
             ++numberClientsDescriptors;
+
+            cv.notify_all();
+            READY_THREAD_GLOBAL_SYNC = true;
         }
     }
 
     clientsDescriptors.clear();
     close(nSocketDesc);
+    cout << "#DEBUG: server closed" << endl;
     return 0;
 }
 
@@ -315,5 +328,6 @@ int main()
     th_1.join();
     cth.join();
 
+    cout << "#DEBUG: @@@@ EVERYTHING IS SUCCESSIVELY CLOSED @@@@" << endl;
     return 0;
 }
