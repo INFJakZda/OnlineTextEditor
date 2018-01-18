@@ -6,7 +6,8 @@ Task requirement:
 * gui for client.
 
 How to launch:
-* make make_bash file
+* install python3-pyqt4
+* launch make
 * server: ./server/server
 * client: python3 client/textedit.py
 
