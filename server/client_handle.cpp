@@ -17,7 +17,9 @@ bool manage_client(int nClientDesc, int code_msg)
     int posX;
     int posY;
 
-    usleep(500000); // 0.5 seconds
+    cout << "#DEBUG-manage_client: wait for data" << endl;
+    usleep(100000); // 0.1 seconds
+    cout << "#DEBUG-manage_client: processing data" << endl;
 
     if(code_msg == 111)
     {
