@@ -67,7 +67,11 @@ void control_client()
         cv.wait(lk, []{return READY_THREAD_GLOBAL_SYNC;});
         //cerr << "#DEBUG: control_client FINISHED WAITING.\n";
 
-        if(numberClientsDescriptors == 0) continue;
+        if(numberClientsDescriptors == 0)
+        {
+            READY_THREAD_GLOBAL_SYNC = false;
+            continue;
+        }
 
         if(numberClientsDescriptorsChang == true)
         {
