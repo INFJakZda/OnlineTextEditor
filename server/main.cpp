@@ -1,196 +1,192 @@
-#include "main.hpp"
+#include "include/main.hpp"
 
-int id;
-bool end_program = false;
+volatile bool endProgram = false;
 int nSocketDesc;
-condition_variable cv;
-mutex cv_m;
-bool READY_THREAD_GLOBAL_SYNC = false;
 vector < int > clientsDescriptors;
 int numberClientsDescriptors = 0;
-bool numberClientsDescriptorsChang = false;
-pollfd *waitfor = NULL;
-struct ClientSelectText CST[CLIENT_LIMIT];
+bool isClientsDescriptorsChange = false;
+pollfd *ClientStruct = NULL;
+mutex myMutex;
+condition_variable myCV;
+volatile bool ready = true;
+string fileBuffer;
 
 void signal_callback_handler(int signum)
 {
-  cout << "#DEBUG: Signum = " << signum <<endl;
-  end_program = true;
-  READY_THREAD_GLOBAL_SYNC = true;
-  cout << "#DEBUG: Start shutdown server" << endl;
+    cout << "#DEBUG: Signum = " << signum <<endl;
+    endProgram = true;
 }
-
-void signal_callback_handler_PIPE(int signum)
-{
-    cout << "#ERROR: caught signal SIGPIPE " << signum << "!!!!!!" << endl;
-    /*for(unsigned int i = 0; i < clientsDescriptors.size(); i++)
-    {
-        cout << "#DEBUG-schPIPE: Close descriptor - " << waitfor[i].fd << endl;
-        close(waitfor[i].fd);
-        waitfor[i].fd = -1;
-    }*/
-}
-
 
 void pollfd_array_resize()
 {
-    cout << "#DEBUG: pollfd_array_resize" << endl;
-    if(waitfor != NULL)
+    cout << "#DEBUG-control_client: pollfd_array_resize" << endl;
+    if(ClientStruct != NULL)
     {
-        delete waitfor;
-        waitfor = NULL;
+        delete [] ClientStruct;
+        ClientStruct = NULL;
     }
-    cout << "#DEBUG: numberClientsDescriptors = " << numberClientsDescriptors << endl;
+    cout << "#DEBUG-control_client: numberClientsDescriptors = " << numberClientsDescriptors << endl;
     if(numberClientsDescriptors != 0)
     {
-        waitfor = new pollfd[numberClientsDescriptors];
+        ClientStruct = new pollfd[numberClientsDescriptors];
         for(size_t i = 0; i < clientsDescriptors.size(); i++)
         {
-            waitfor[i].fd = clientsDescriptors[i];
-            waitfor[i].events = POLLIN;
-            cout << "#DEBUG: Active descriptions " << clientsDescriptors[i] << endl;
+            ClientStruct[i].fd = clientsDescriptors[i];
+            ClientStruct[i].events = POLLIN;
+            cout << "#DEBUG-control_client: Active descriptor " << clientsDescriptors[i] << endl;
         }
     }
 }
 
 void control_client()
 {
-    cout << "#DEBUG: control_client lounched" << endl;
-
     int readypoll;
-    int codeMsg;
+    int numberClientsDescriptors_temp;
+    int dataSizeSendORRecv;
+    bool canRemoveDesc;
+    MESSAGE_INFO msgInfo;
+    char bufferMSG[PACKETSIZE];
 
-    while(!end_program)
+    cout << "#DEBUG: control_client lounched" << endl;
+    while(!endProgram)
     {
-        unique_lock<std::mutex> lk(cv_m);
-        //cerr << "#DEBUG: control_client WAITING... \n";
-        cv.wait(lk, []{return READY_THREAD_GLOBAL_SYNC;});
-        //cerr << "#DEBUG: control_client FINISHED WAITING.\n";
+        if(numberClientsDescriptors == 0) { continue; }
 
-        if(numberClientsDescriptors == 0)
+        if(isClientsDescriptorsChange == true)
         {
-            READY_THREAD_GLOBAL_SYNC = false;
-            continue;
-        }
-
-        if(numberClientsDescriptorsChang == true)
-        {
-            numberClientsDescriptorsChang = false;
+            isClientsDescriptorsChange = false;
             pollfd_array_resize();
         }
 
-        if(numberClientsDescriptors != 0)
+        #define POLL_TIMEOUT -1
+        readypoll = poll(ClientStruct, numberClientsDescriptors, POLL_TIMEOUT);
+        if(readypoll == -1)
         {
-            readypoll = poll(waitfor, numberClientsDescriptors, 1000);
-            if(readypoll == -1)
+            cout << "#DEBUG: control_client POLL ERROR" << endl;
+            //TODO: do something or not?
+            continue;
+        }
+        /*else if(readypoll == 0)
+        {
+            cout <<"#DEBUG: control_client POLL TIMEOUT" << endl;
+            //TODO: do something or not?
+        }*/
+        else
+        {
+            ready = false;
+            canRemoveDesc = false;
+            numberClientsDescriptors_temp = numberClientsDescriptors;
+            for(int i = 0; i < numberClientsDescriptors; i++)
             {
-                cout << "#DEBUG: control_client POLL ERROR" << endl;
-                continue;
-            }
-            else if(readypoll == 0)
-            {
-                cout <<"#DEBUG: control_client POLL TIMEOUT" << endl;
-                for(unsigned int i = 0; i < clientsDescriptors.size(); i++)
+                if(ClientStruct[i].revents & POLLIN)
                 {
-                    cout <<"#DEBUG: Test connection to descriptor " << waitfor[i].fd << endl;
-                    codeMsg = send(waitfor[i].fd, &codeMsg, sizeof(codeMsg), MSG_NOSIGNAL);
-                    if ((codeMsg == -1) || (CST[i].timeoutcount == 3))
+                    dataSizeSendORRecv = recv_all(ClientStruct[i].fd, bufferMSG, sizeof(bufferMSG)/sizeof(bufferMSG[0]));
+                    if(dataSizeSendORRecv == RECIVE_ERROR)
                     {
-                        --numberClientsDescriptors;
-                        clientsDescriptors.erase(clientsDescriptors.begin() + i);
-                        numberClientsDescriptorsChang = true;
-
-                        cout << "#DEBUG: Delete due timeout client id " << waitfor[i].fd << endl;
-                        for(int i = 0; i < CLIENT_LIMIT; i++)
-                            if(CST[i].descriptor == waitfor[i].fd)
-                            {
-                                close(waitfor[i].fd);
-                                CST[i].descriptor = -1;
-                                CST[i].timeoutcount = 0;
-                            }
-                        i = clientsDescriptors.size();
+                        cout << "#DEBUG: While recv from descriptor " << ClientStruct[i].fd << " get error." << endl;
+                        cout << strerror(errno) << " :: " << errno << endl;
+                    }
+                    else if(dataSizeSendORRecv == RECIVE_ZERO)
+                    {
+                        cout << "#DEBUG: Client with descriptor " << ClientStruct[i].fd << " closed the connection." << endl;
+                        close(ClientStruct[i].fd);
+                        canRemoveDesc = true;
+                        --numberClientsDescriptors_temp;
+                        clientsDescriptors.erase(std::remove(clientsDescriptors.begin(), clientsDescriptors.end(), ClientStruct[i].fd), clientsDescriptors.end());
                     }
                     else
                     {
-                        cout << "#DEBUG: Test connection to port OK" << endl;
-                        ++CST[i].timeoutcount;
-                    }
-                }
-                continue;
-            }
-            else
-            {
-                if(waitfor != NULL)
-                for(int i = 0; i < numberClientsDescriptors; i++)
-                    if(waitfor[i].revents & POLLIN)
-                    {
-                        if(read(waitfor[i].fd, &codeMsg, sizeof(codeMsg)) <= 0)
+                        deserialize_msg(bufferMSG, &msgInfo);
+                        cout << "#DEBUG: Recive flag " << msgInfo.flag << " from " <<  ClientStruct[i].fd << endl;
+                        if(msgInfo.flag == FLAG_INSERT_BEFORE)
                         {
-                            --numberClientsDescriptors;
-                            clientsDescriptors.erase(clientsDescriptors.begin() + i);
-
-                            cout << "#DEBUG: control_client Delete client id - " << waitfor[i].fd << endl;
-                            for(int i = 0; i < CLIENT_LIMIT; i++)
-                                if(CST[i].descriptor == waitfor[i].fd)
-                                {
-                                    close(waitfor[i].fd);
-                                    CST[i].descriptor = -1;
-                                    CST[i].timeoutcount = 0;
-                                }
+                            cout << "#DEBUG: FLAG_INSERT_BEFORE" << endl;
+                            fileBuffer.insert(msgInfo.posX, string(1, msgInfo.chr));
+                        }
+                        else if(msgInfo.flag == FLAG_REPLACE)
+                        {
+                            cout << "#DEBUG: FLAG_REPLACE" << endl;
+                            while(unsigned(msgInfo.posX) > fileBuffer.size())
+                                fileBuffer.resize(fileBuffer.size() + 1, ' ');
+                            fileBuffer.replace(msgInfo.posX, msgInfo.posX+1, string(1, msgInfo.chr));
+                        }
+                        else if(msgInfo.flag == FLAG_APPEND)
+                        {
+                            cout << "#DEBUG: FLAG_APPEND" << endl;
+                            if(fileBuffer.length() != unsigned(msgInfo.posX - 1))
+                                cout << "#DEBUG: Append in wrong place " << endl;
+                            fileBuffer.append(string(1, msgInfo.chr));
+                        }
+                        else if(msgInfo.flag == FLAG_RM)
+                        {
+                            cout << "#DEBUG: FLAG_RM" << endl;
+                            fileBuffer = fileBuffer.substr(0, (fileBuffer.size() - 1));
+                            if(fileBuffer.length() == 0)
+                                fileBuffer = " ";
+                        }
+                        else if(msgInfo.flag == FLAG_DEL_ALL)
+                        {
+                            cout << "#DEBUG: FLAG_DEL_ALL" << endl;
+                            fileBuffer.clear();
+                            fileBuffer = " ";
                         }
                         else
                         {
-                            try
+                            cout << "#DEBUG: Recive wrong flag " << msgInfo.flag << endl;
+                            continue;
+                        }
+                        serialize_msg(&msgInfo, bufferMSG);
+                        for(int cli = 0; cli < numberClientsDescriptors; cli++)
+                        {
+                            dataSizeSendORRecv = send_all(ClientStruct[cli].fd, bufferMSG, sizeof(bufferMSG)/sizeof(bufferMSG[0]));
+                            if(dataSizeSendORRecv == SEND_ERROR)
                             {
-                                if(!manage_client(waitfor[i].fd, codeMsg))
-                                {
-                                    --numberClientsDescriptors;
-                                    clientsDescriptors.erase(clientsDescriptors.begin() + i);
-                                    numberClientsDescriptorsChang = true;
-
-                                    cout << "#DEBUG: control_client Delete client id - " << waitfor[i].fd << endl;
-                                    for(int i = 0; i < CLIENT_LIMIT; i++)
-                                        if(CST[i].descriptor == waitfor[i].fd)
-                                        {
-                                            close(waitfor[i].fd);
-                                            CST[i].descriptor = -1;
-                                            CST[i].timeoutcount = 0;
-                                        }
-                                }
+                                cout << "#DEBUG: Send error to " << ClientStruct[cli].fd << endl;
+                                cout << strerror(errno) << " :: " << errno << endl;
                             }
-                            catch(int e)
-                            {
-                                cout << "#DEBUG: Exception Nr. " << e << '\n';
-                                continue;
-                            }
+                            else if(dataSizeSendORRecv == SEND_ALL_DATA) { cout << "#DEBUG: Data send to " << ClientStruct[cli].fd << endl; }
                         }
                     }
-           }
+                }
+            }
+            if(canRemoveDesc)
+            {
+                numberClientsDescriptors = numberClientsDescriptors_temp;
+                isClientsDescriptorsChange = true;
+            }
+            std::unique_lock<std::mutex> lck(myMutex);
+            ready = true;
+            myCV.notify_all();
+            cout << "**********************************" << endl;
+            cout << "#DEBUG: SAVED DATA PRINT" << endl;
+            cout << fileBuffer << endl;
+            cout << "**********************************" << endl;
         }
     }
 
-    if(waitfor != NULL)
+    if(ClientStruct != NULL)
     {
-        for(int i = 0; i < numberClientsDescriptors; i++) close(waitfor[i].fd);
-        delete waitfor;
+        for(int i = 0; i < numberClientsDescriptors; i++)
+            close(ClientStruct[i].fd);
+        delete [] ClientStruct;
     }
-    
     cout << "#DEBUG: control_client closed" << endl;
 }
 
-int server()
+int accept_clients()
 {
     int nClientDesc;
     int nBind, nListen;
     struct sockaddr_in serverAddr, clientAddr;
     socklen_t sockAddrSize;
     int nFoo = 1;
-
     sockAddrSize = sizeof(struct sockaddr);
 
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serverAddr.sin_port = htons(PORT);
+
+    char *buffer;
 
     nSocketDesc = socket(AF_INET, SOCK_STREAM, 0);
     if(nSocketDesc < 0)
@@ -199,7 +195,6 @@ int server()
         return -1;
     }
     setsockopt(nSocketDesc, SOL_SOCKET, SO_REUSEADDR, (char *) &nFoo, sizeof(nFoo));
-
     fcntl(nSocketDesc, F_SETFL, O_NONBLOCK);
 
     nBind = bind(nSocketDesc, (struct sockaddr *) &serverAddr, sizeof(struct sockaddr));
@@ -216,119 +211,51 @@ int server()
         return -3;
     }
 
-    cout << "#DEBUG: Sever work." << endl;
-
-    while(!end_program)
+    cout << "#INFO: accept_clients start" << endl;
+    while(!endProgram)
     {
         nClientDesc = accept4(nSocketDesc, (struct sockaddr *) &clientAddr, &sockAddrSize, SOCK_CLOEXEC);
-
-        if(nClientDesc <= 0) continue;
-
-        cout << "#DEBUG: nClientDesc -> " << nClientDesc << endl;
-        cout << "#DEBUG: Client -> " << inet_ntoa((struct in_addr) clientAddr.sin_addr) << endl;
-
-        if(end_program)
-            break;
-
-        if(numberClientsDescriptors >= CLIENT_LIMIT)  // ONLY CLIENT_LIMIT users
-            close(nClientDesc);
-        else
+        if(nClientDesc > 0)
         {
-            READY_THREAD_GLOBAL_SYNC = false;
-            this_thread::sleep_for(std::chrono::seconds(1));
-            lock_guard<std::mutex> lk(cv_m);
-            cerr << "#DEBUG: server manage new connection\n";
-
-            int countCLIENT = 0;
-            for(int i = 0; i < CLIENT_LIMIT; i++)
+            cout << "#INFO: Client descriptor: " << nClientDesc << endl;
+            cout << "#INFO: Client IP: " << inet_ntoa((struct in_addr) clientAddr.sin_addr) << endl;
+            unique_lock<std::mutex> lck(myMutex);
+            while (!ready) myCV.wait(lck);
+            buffer = new char[fileBuffer.size()];
+            for(unsigned int k = 0; k < fileBuffer.size(); k++) { buffer[k] = fileBuffer[k]; }
+            cout << "#DEBUG-accept_clients: Start send data with size " << fileBuffer.size() << endl;
+            if(send_all(nClientDesc, buffer, fileBuffer.size()) < SEND_ERROR)
             {
-                cout << "#DEBUG: This client desc is saved: " << CST[i].descriptor << endl;
-                if(CST[i].descriptor == -1) ++countCLIENT;
-                else
-                {
-                    cout <<"#DEBUG: Test connection to descriptor " << endl;
-                    char c;
-                    ssize_t x = recv(CST[i].descriptor, &c, 1, MSG_PEEK);
-                    if (x > 0)
-                    {
-                        /* ...have data, leave it in socket buffer */
-                        cout << "#DEBUG: This client exist: " << CST[i].descriptor << endl;
-                    }
-                    else if (x == 0)
-                    {
-                        /* ...handle FIN from client */
-                        close(CST[i].descriptor);
-                        CST[i].descriptor = -1;
-                        ++countCLIENT;
-                    }
-                    else
-                    {
-                         /* ...handle errors */
-                        close(CST[i].descriptor);
-                        CST[i].descriptor = -1;
-                        ++countCLIENT;
-                    }
-                }
+                cout << "#DEBUG-accept_clients: Send error" << endl;
+                delete [] buffer;
+                continue;
             }
-
-            if(countCLIENT == CLIENT_LIMIT)
-            {
-                clientsDescriptors.clear();
-                numberClientsDescriptorsChang = true;
-                numberClientsDescriptors = 0;
-            }
-            usleep(1000 * 1); //1 sec
-
-            for(int i = 0; i < CLIENT_LIMIT; i++)
-                if(CST[i].descriptor == -1)
-                {
-                    CST[i].descriptor = nClientDesc;
-                    CST[i].selectStart = 0;
-                    CST[i].selectEnd = 0;
-                    CST[i].allupdate = false;
-                    CST[i].timeoutcount = 0;
-                    i = 100;
-                }
+            cout << "#DEBUG-accept_clients:Finish send data" << endl;
+            delete [] buffer;
             clientsDescriptors.push_back(nClientDesc);
-            numberClientsDescriptorsChang = true;
             ++numberClientsDescriptors;
-
-            cv.notify_all();
-            READY_THREAD_GLOBAL_SYNC = true;
+            isClientsDescriptorsChange = true;
         }
     }
 
-    clientsDescriptors.clear();
-    close(nSocketDesc);
-    cout << "#DEBUG: server closed" << endl;
+    cout << "#INFO: accept_clients stop" << endl;
+
     return 0;
 }
 
 int main()
 {
     signal(SIGINT, signal_callback_handler);
-    signal(SIGPIPE, signal_callback_handler_PIPE);
-    //signal(SIGPIPE, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
 
-    id = msgget(123456, 0644|IPC_CREAT);
-    if(id == -1)
-    {
-        cout << "#ERROR: Cannot create IPC!!!" << endl;
-        return 1;
-    }
-
-    for(int i = 0; i < CLIENT_LIMIT; i++) CST[i].descriptor = -1;
-
-    thread th_1(feditor);
-    thread cth(control_client);
-
-    while(server()) cout << "#INFO: Server exit from loop!!!!!!!!!!!!!!!" << endl;
-
-    cout << "#DEBUG: Server is closed" << endl;
-    msgctl(id, IPC_RMID, NULL);
-    th_1.join();
-    cth.join();
-
-    cout << "#DEBUG: @@@@ EVERYTHING IS SUCCESSIVELY CLOSED @@@@" << endl;
+    cout << "#DEBUG: @@@@ SERVER STARTED @@@@" << endl;
+    fileBuffer = " ";
+    thread controlClientThread(control_client);
+    while(accept_clients());
+    controlClientThread.join();
+    close(nSocketDesc);
+    clientsDescriptors.clear();
+    fileBuffer.clear();
+    cout << "#DEBUG: @@@@ SERVER IS SUCCESSIVELY CLOSED @@@@" << endl;
     return 0;
 }
