@@ -1,4 +1,6 @@
-# network_lab_project
+# (The gitlab.cs.put.poznan.pl is corrupted, to see current status, please visit this site: 'https://github.com/eaglx/network_lab_project' )
+
+# network_lab_project 
 Editor for collaboration. 
 
 ## Task requirement:
