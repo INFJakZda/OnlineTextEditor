@@ -12,6 +12,7 @@
 #include <iostream>
 #include <mutex>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <string>
 #include <signal.h>
@@ -23,21 +24,20 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <fstream>
 
 #define QUEUE_SIZE 20
 #define PORT 6666
 
 #define FLAG_INSERT_BEFORE 111
 #define FLAG_REPLACE 222
+#define FLAG_REPLACE_CHARS 223
 #define FLAG_APPEND 333
+#define FLAG_APPEND_CHARS 334
 #define FLAG_RM 444
 #define FLAG_DEL_ALL 555
-#define FLAG_START_SELECTION 666
-#define FLAG_END_SELECTION 667
-#define FLAG_SELECTION_OFF 668
 
-#define SEND_ALL_DATA 0
+#define SEND_ALL_DATA 1
+#define SEND_ZERO 0
 #define SEND_ERROR -1
 #define RECIVE_ZERO 0
 #define RECIVE_ERROR -1
@@ -50,14 +50,8 @@ struct MESSAGE_INFO
 {
     int flag;
     int posX;
+    int length;
     char chr;
-};
-
-struct SELECTION_INFO
-{
-        int fDesc;
-        int startSelection;
-        int endSelection;
 };
 
 int send_all(int, void *, size_t);

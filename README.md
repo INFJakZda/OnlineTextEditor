@@ -1,6 +1,4 @@
-# (The gitlab.cs.put.poznan.pl is corrupted, to see current status, please visit this site: 'https://github.com/eaglx/network_lab_project' )
-
-# network_lab_project 
+# network_lab_project
 Editor for collaboration. 
 
 ## Task requirement:
@@ -12,13 +10,17 @@ Editor for collaboration.
 ### Release 0.03.x
 
 #### How to launch:
-1. Launch make to build the server.
-2. Start the server.
+1. Launch make to build the server (type in the terminal 'make').
+2. Start the server (type in the terminal 'make run').
 3. To build the client use QtCreator or in the terminal (in the client's folder) enter:
     1. qmake.
     2. make.
 
 #### Screenshot 1
+![demo_screen](https://user-images.githubusercontent.com/32968460/36067861-91066de0-0ec7-11e8-841c-1a8e230fc482.png)
+
+#### Screenshot 2
+![demo_screen](https://user-images.githubusercontent.com/32968460/36072138-ca17f5ce-0f1a-11e8-8d3d-dbd8458b6834.png)
 
 ### Release 0.01 and Release 0.02.x.x
 
